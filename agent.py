@@ -20,6 +20,7 @@ offline `FakeLLM`. Keys live only in `.env`, which git ignores.
 from __future__ import annotations
 
 from pathlib import Path
+import concurrent.futures
 
 from bootcamp_agent.agent import AgentResult, answer_question
 from bootcamp_agent.config import load_settings
@@ -36,29 +37,34 @@ CORPUS_DIR = Path(__file__).resolve().parent / "data" / "corpus"
 class YourAgent:
     """The agent the tests and the grader run. Make it yours."""
 
-    #: How long one provider call may take before the agent gives up with a
-    #: flagged refusal. NOT ENFORCED YET: the starter waits for ever, which is
-    #: why the `timeout` contract test is marked xfail. The test sets this low
-    #: and expects an answer inside a second.
     timeout_s: float = 30.0
 
     def __init__(self, client: LLMClient | None = None) -> None:
         self.documents: list[Document] = load_corpus(CORPUS_DIR)
         self.client: LLMClient = client if client is not None else get_client(load_settings())
-        # Every tool the agent can reach. Session 4's registry, read-only by
-        # construction; session 12 has you classify each one, and the `tools`
-        # contract test refuses anything not classified as a reader.
         self.tools: dict[str, Tool] = build_tools(self.documents, self.client)
 
     def run(self, question: str) -> AgentResult:
         """One question, answered or refused, with the trace of how."""
-        return answer_question(
-            question,
-            self.documents,
-            self.client,
-            max_tool_calls=3,
-            top_k=3,
-        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                answer_question,
+                question,
+                self.documents,
+                self.client,
+                max_tool_calls=3,
+                top_k=3,
+            )
+            try:
+                return future.result(timeout=self.timeout_s)
+            except concurrent.futures.TimeoutError:
+                return AgentResult(
+                    answer=ResearchAnswer(
+                        answer="Timeout exceeded",
+                        citations=[]
+                    ),
+                    trace=[]
+                )
 
     def __call__(self, question: str) -> ResearchAnswer:
         return self.run(question).answer
