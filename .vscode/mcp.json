@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "dev3pack-course": {
+      "type": "http",
+      "url": "https://mcp.geckovision.tech/course/mcp"
+    },
+    "gecko-store": {
+      "type": "http",
+      "url": "https://mcp.geckovision.tech/orquestra/mcp"
+    }
+  }
+}
